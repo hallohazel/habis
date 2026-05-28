@@ -1,0 +1,110 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+// schema.prisma
+
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// 1. Status Transaksi
+enum OrderStatus {
+  PENDING
+  APPROVED
+  CLAIMED
+  CANCELLED
+}
+
+// 2. Model untuk Pengguna Umum (Pembeli)
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relasi: 1 User bisa membuat banyak Order
+  orders    Order[]
+
+  @@map("users")
+}
+
+// 3. Model untuk Mitra Toko / Restoran
+model Merchant {
+  id            String      @id @default(uuid())
+  name          String
+  email         String      @unique
+  password      String
+  address       String
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  // Relasi 1-to-1 dengan Certificate
+  certificateId String      @unique
+  certificate   Certificate @relation(fields: [certificateId], references: [id])
+
+  // Relasi: 1 Merchant bisa menjual banyak Food
+  foods         Food[]
+
+  @@map("merchants")
+}
+
+// 4. Model untuk Verifikasi Kode Sertifikasi Merchant
+model Certificate {
+  id        String    @id @default(uuid())
+  code      String    @unique
+  isUsed    Boolean   @default(false)
+  issuedAt  DateTime  @default(now())
+  
+  // Relasi balik (Mendukung 1-to-1 di Merchant)
+  merchant  Merchant?
+
+  @@map("certificates")
+}
+
+// 5. Model untuk Listing Makanan Sisa
+model Food {
+  id             String   @id @default(uuid())
+  merchantId     String
+  merchant       Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  name           String
+  imageUrl       String
+  stock          Int
+  originalPrice  Decimal  @db.Decimal(10, 2) // Menggunakan Decimal untuk presisi uang
+  expiryTime     DateTime // Batas kelayakan konsumsi
+  pickupDeadline DateTime // Batas akhir jam pengambilan makanan
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relasi: 1 Food bisa dibeli di banyak Order berbeda
+  orders         Order[]
+
+  @@map("foods")
+}
+
+// 6. Model untuk Transaksi
+model Order {
+  id         String      @id @default(uuid())
+  userId     String
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  foodId     String
+  food       Food        @relation(fields: [foodId], references: [id], onDelete: Cascade)
+  quantity   Int
+  totalPrice Decimal     @db.Decimal(10, 2) // Harga final yang dikunci saat order dibuat
+  status     OrderStatus @default(PENDING)
+  claimPin   String?     @db.VarChar(4)     // PIN 4 digit untuk klaim makanan, opsional saat PENDING
+  expiredAt  DateTime                       // Diisi oleh NestJS (createdAt + 15 menit)
+  createdAt  DateTime    @default(now())    // Menggantikan orderTime
+  updatedAt  DateTime    @updatedAt
+
+  @@map("orders")
+}
